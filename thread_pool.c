@@ -433,26 +433,50 @@ void ThreadPoolDestroy(stThreadPool* pool)
 /* Task executed by worker threads.
     It simply prints pool id, thread id, process id, at any point number of jobs
     in queue. */
-void* print_data(void* in)
+void* routine_task(void* in)
 {
   stThreadPool* tp = (stThreadPool*)in;
   pthread_t my_thread_id = pthread_self();
   pid_t my_process_id = getpid();
+  printf("I am routine task\n");	
   printf("pool_id= %p  job_count= %d my_thread_id= %d my_process_id= %d\n",tp->pool_id, tp->job_count, my_thread_id, my_process_id);
   return NULL;
 }
+
+void* special_task(void* in)
+{
+  stThreadPool* tp = (stThreadPool*)in;
+  pthread_t my_thread_id = pthread_self();
+  pid_t my_process_id = getpid();
+  printf("I am special task\n");
+  printf("pool_id= %p  job_count= %d my_thread_id= %d my_process_id= %d\n",tp->pool_id, tp->job_count, my_thread_id, my_process_id);
+   return NULL;
+}
+
 int main()
 {
+   /* These values are used to create a normal worker thread. */	
    unsigned int min = 100;
    unsigned int max = 1000;
    unsigned int tm_out = 10;
+
+   /* These values are used to create a special worker thread.	
+   unsigned int dedicated_min_thread = 5;
+   unsigned int dedicated_max_thread = 5;	
    int i;
    fork();fork();fork();fork();
 
+   /* Threads in this pool peroform the routine work protecting the data. */	
    stThreadPool* pool_handle = CreateThreadPool(min, max, tm_out, NULL);
+
+    /* Threads in this pool perform special task. They can be used for loging purpose
+       OR cleanup in case of abnormal termination of other threads OR to monitor the 
+       disk/cpu/memory consumption and many more. */	
+   stThreadPool* dedicated_pool_handle = CreateThreadPool(dedicated_min_thread, dedicated_max_thread, 0, NULL);	
+
+   /* Note: Though pool_handle and dedicated_pool_handle can be linked, but as of now keeping them separate */	
    pool_handle->pool_id = pool_handle;
-   pool_handle->pool_count++;
- //  for(i = 0; i < 100; i++)
+   dedicated_pool_handle->pool_id = dedicated_pool_handle;	
    while(1)
    {
      /* Wait if job queue is filled till some defined threshold number of jobs. 
@@ -467,15 +491,16 @@ int main()
      if(pool_handle->job_count > 500000)
      {	     
 	sleep(1);
+	CreateJobQueue(dedicated_pool_handle, special_task, dedicated_pool_handle);     
      }	     
      CreateJobQueue(pool_handle, print_data, pool_handle);    
    }
   /* Wait till all done. */	
   ThreadPoolWait(pool_handle);
+  ThreadPoolWait(dedicated_pool_handle);	
 
   /* All done, destroy the pool and free the resources. */	
   ThreadPoolDestroy(pool_handle);
-  pool_handle->pool_count--;
-  
+  ThreadPoolDestroy(dedicated_pool_handle);
   return 0;
 }
